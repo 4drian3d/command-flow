@@ -1,7 +1,10 @@
 package me.fixeddev.commandflow.velocity;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandSource;
-import com.velocitypowered.api.command.RawCommand;
 import me.fixeddev.commandflow.CommandManager;
 import me.fixeddev.commandflow.Namespace;
 import me.fixeddev.commandflow.NamespaceImpl;
@@ -10,9 +13,7 @@ import me.fixeddev.commandflow.exception.CommandException;
 import me.fixeddev.commandflow.translator.Translator;
 import net.kyori.adventure.text.Component;
 
-import java.util.List;
-
-public class VelocityCommandWrapper implements RawCommand {
+public class VelocityCommandWrapper {
 
     protected final CommandManager commandManager;
     protected final Translator translator;
@@ -32,15 +33,50 @@ public class VelocityCommandWrapper implements RawCommand {
         this.permission = command.getPermission();
     }
 
+    public BrigadierCommand brigadier() {
+        final LiteralArgumentBuilder<CommandSource> literalBuilder = LiteralArgumentBuilder
+                .<CommandSource>literal(command)
+                .requires(source -> {
+                    Namespace namespace = new NamespaceImpl();
+                    namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, source);
 
-    @Override
-    public void execute(Invocation invocation) {
-        CommandSource commandSource = invocation.source();
-        String argumentLine = invocation.alias() + " " + invocation.arguments();
+                    return commandManager.getAuthorizer().isAuthorized(namespace, permission);
+                })
+                .executes(ctx -> {
+                    CommandSource commandSource = ctx.getSource();
+                    String input = ctx.getInput();
+                    this.execution(commandSource, input);
 
+                    return com.mojang.brigadier.Command.SINGLE_SUCCESS;
+                }).then(RequiredArgumentBuilder.<CommandSource, String>argument("arguments", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> {
+                            CommandSource commandSource = ctx.getSource();
+                            String argumentLine = ctx.getInput();
+
+                            Namespace namespace = new NamespaceImpl();
+                            namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, commandSource);
+
+                            commandManager.getSuggestions(namespace, argumentLine).forEach(builder::suggest);
+
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            CommandSource commandSource = ctx.getSource();
+                            String input = ctx.getInput();
+                            this.execution(commandSource, input);
+
+                            return com.mojang.brigadier.Command.SINGLE_SUCCESS;
+                        })
+                );
+
+
+        return new BrigadierCommand(literalBuilder);
+    }
+
+    private void execution(CommandSource source, String argumentLine) {
         Namespace namespace = new NamespaceImpl();
-        namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, commandSource);
-        namespace.setObject(String.class, "label", invocation.alias());
+        namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, source);
+        namespace.setObject(String.class, "label", command);
 
         try {
             commandManager.execute(namespace, argumentLine);
@@ -55,35 +91,6 @@ public class VelocityCommandWrapper implements RawCommand {
 
             throw new CommandException("An unexpected exception occurred while executing the command " + this.command, exceptionToSend);
         }
-    }
-
-    public String getPermission() {
-        return permission;
-    }
-
-    public String[] getAliases() {
-        return aliases;
-    }
-
-    @Override
-    public List<String> suggest(Invocation invocation) {
-        CommandSource commandSource = invocation.source();
-        String argumentLine = invocation.alias() + " "+ invocation.arguments();
-
-        Namespace namespace = new NamespaceImpl();
-        namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, commandSource);
-
-        return commandManager.getSuggestions(namespace, argumentLine);
-    }
-
-    @Override
-    public boolean hasPermission(Invocation invocation) {
-        CommandSource commandSource = invocation.source();
-
-        Namespace namespace = new NamespaceImpl();
-        namespace.setObject(CommandSource.class, VelocityCommandManager.SENDER_NAMESPACE, commandSource);
-
-        return commandManager.getAuthorizer().isAuthorized(namespace, getPermission());
     }
 
     protected static void sendMessageToSender(CommandException exception, Namespace namespace) {

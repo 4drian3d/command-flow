@@ -1,5 +1,6 @@
 package me.fixeddev.commandflow.velocity;
 
+import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.proxy.ProxyServer;
 import me.fixeddev.commandflow.CommandContext;
@@ -33,7 +34,7 @@ public class VelocityCommandManager implements CommandManager {
     protected final CommandManager commandManager;
     protected final Object plugin;
 
-    protected final Map<String, VelocityCommandWrapper> wrapperMap;
+    protected final Map<String, BrigadierCommand> commandMap;
 
     public VelocityCommandManager(ProxyServer proxyServer, Object plugin) {
         this(proxyServer, new SimpleCommandManager(), plugin);
@@ -44,7 +45,7 @@ public class VelocityCommandManager implements CommandManager {
         this.commandManager = commandManager;
         this.plugin = plugin;
 
-        wrapperMap = new HashMap<>();
+        commandMap = new HashMap<>();
 
         setAuthorizer(new VelocityAuthorizer());
         getTranslator().setProvider(new VelocityDefaultTranslationProvider());
@@ -96,15 +97,15 @@ public class VelocityCommandManager implements CommandManager {
     public void registerCommand(Command command) {
         commandManager.registerCommand(command);
 
-        VelocityCommandWrapper velocityCommandWrapper = new VelocityCommandWrapper(command, commandManager, getTranslator());
-        wrapperMap.put(command.getName(), velocityCommandWrapper);
+        BrigadierCommand velocityCommand = new VelocityCommandWrapper(command, commandManager, getTranslator()).brigadier();
+        commandMap.put(command.getName(), velocityCommand);
 
-        final CommandMeta commandMeta = proxyServer.getCommandManager().metaBuilder(command.getName())
+        final CommandMeta commandMeta = proxyServer.getCommandManager().metaBuilder(velocityCommand)
                         .aliases(command.getAliases().toArray(new String[0]))
                         .plugin(plugin)
                         .build();
 
-        proxyServer.getCommandManager().register(commandMeta, velocityCommandWrapper);
+        proxyServer.getCommandManager().register(commandMeta, velocityCommand);
     }
 
     @Override
@@ -123,8 +124,8 @@ public class VelocityCommandManager implements CommandManager {
     public void unregisterCommand(Command command) {
         commandManager.unregisterCommand(command);
 
-        VelocityCommandWrapper velocityCommandWrapper = wrapperMap.get(command.getName());
-        if (velocityCommandWrapper != null) {
+        BrigadierCommand velocityCommand = commandMap.get(command.getName());
+        if (velocityCommand != null) {
             final CommandMeta commandMeta = proxyServer.getCommandManager().getCommandMeta(command.getName());
             proxyServer.getCommandManager().unregister(commandMeta);
         }
